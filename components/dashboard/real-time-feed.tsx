@@ -80,15 +80,28 @@ export function RealTimeFeed({ items }: RealTimeFeedProps) {
                   </span>
                 </div>
                 <p className="text-sm text-foreground/60 line-clamp-2">{item.description}</p>
-                <div className="flex items-center gap-4 mt-2 text-xs text-foreground/40">
-                  <span>{item.source}</span>
-                  <div className="flex items-center gap-1">
+                <div className="grid gap-2 mt-2 text-xs text-foreground/40 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <span>Source: {item.source}</span>
+                    {item.locationName && <span>Location: {item.locationName}</span>}
+                  </div>
+                  <div className="flex items-center gap-1 justify-end sm:justify-start">
                     <Clock size={12} />
                     <span>
                       {Math.round((Date.now() - item.timestamp.getTime()) / 60000)}m ago
                     </span>
                   </div>
                 </div>
+
+                {(item.metric !== undefined || item.temperature !== undefined || item.precipitation !== undefined || item.humidity !== undefined || item.windSpeed !== undefined) && (
+                  <div className="mt-3 grid gap-2 text-xs text-foreground/50 sm:grid-cols-2">
+                    {item.precipitation !== undefined && <span>Rain: {item.precipitation} mm</span>}
+                    {item.temperature !== undefined && <span>Temp: {item.temperature}°C</span>}
+                    {item.humidity !== undefined && <span>Humidity: {item.humidity}%</span>}
+                    {item.windSpeed !== undefined && <span>Wind: {item.windSpeed} m/s</span>}
+                    {item.metric !== undefined && <span>Primary metric: {item.metric}</span>}
+                  </div>
+                )}
               </div>
 
               {/* Pulse indicator for new items */}

@@ -1,6 +1,6 @@
 import { supabaseServer } from '@/lib/supabase-server'
 import { CreateEventInput } from './validators'
-import type { AlertRecord, EventRecord, InsightRecord, UserRecord } from '@/lib/types'
+import type { AlertRecord, EventRecord, InsightRecord, SignalRecord, UserRecord } from '@/lib/types'
 
 const DEFAULT_PAGE_SIZE = 20
 
@@ -50,6 +50,38 @@ export async function createEvent(userId: string, input: CreateEventInput) {
   }
 
   return data as EventRecord
+}
+
+export async function createSignal(
+  eventId: string,
+  userId: string,
+  signal: Omit<SignalRecord, 'id' | 'created_at'>
+) {
+  const { data, error } = await supabaseServer
+    .from('signals')
+    .insert({
+      event_id: eventId,
+      user_id: userId,
+      source: signal.source,
+      location_name: signal.location_name,
+      latitude: signal.latitude,
+      longitude: signal.longitude,
+      risk: signal.risk,
+      summary: signal.summary,
+      temperature: signal.temperature,
+      precipitation: signal.precipitation,
+      humidity: signal.humidity,
+      wind_speed: signal.wind_speed,
+      processed_at: signal.processed_at,
+    })
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return data as SignalRecord
 }
 
 export async function getPendingEvents(limit = 10) {
@@ -201,8 +233,8 @@ export async function fetchRecentNotifications(userId: string, limit = 8) {
 export async function fetchFeedItems(userId: string, page = 1, pageSize = DEFAULT_PAGE_SIZE) {
   const offset = (page - 1) * pageSize
   const { data, error } = await supabaseServer
-    .from('events')
-    .select('id, source, payload, status, created_at')
+    .from('signals')
+    .select('id, source, location_name, latitude, longitude, risk, summary, temperature, precipitation, humidity, wind_speed, processed_at, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .range(offset, offset + pageSize - 1)
@@ -211,21 +243,36 @@ export async function fetchFeedItems(userId: string, page = 1, pageSize = DEFAUL
     throw error
   }
 
-  const events = (data ?? []) as Array<{
+  const signals = (data ?? []) as Array<{
     id: string
     source: string
-    payload: Record<string, any>
-    status: string
+    location_name: string | null
+    latitude: number | null
+    longitude: number | null
+    risk: string
+    summary: string
+    temperature: number | null
+    precipitation: number | null
+    humidity: number | null
+    wind_speed: number | null
+    processed_at: string
     created_at: string
   }>
 
-  return events.map((event) => ({
-    id: event.id,
-    title: String(event.payload.title ?? event.source ?? 'New signal'),
-    description: String(event.payload.description ?? 'Event queued for processing'),
-    impact: (event.payload.impact ?? 'LOW') as 'HIGH' | 'MEDIUM' | 'LOW',
-    timestamp: event.created_at,
-    source: event.source,
+  return signals.map((signal) => ({
+    id: signal.id,
+    title: signal.summary,
+    description: `Risk: ${signal.risk}. ${signal.source}${signal.location_name ? ` — ${signal.location_name}` : ''}`,
+    impact: signal.risk as 'HIGH' | 'MEDIUM' | 'LOW',
+    timestamp: signal.processed_at,
+    source: signal.source,
+    metric: signal.precipitation ?? signal.temperature ?? undefined,
+    processedAt: new Date(signal.processed_at),
+    locationName: signal.location_name ?? undefined,
+    temperature: signal.temperature ?? undefined,
+    precipitation: signal.precipitation ?? undefined,
+    humidity: signal.humidity ?? undefined,
+    windSpeed: signal.wind_speed ?? undefined,
   }))
 }
 

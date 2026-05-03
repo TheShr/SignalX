@@ -90,7 +90,7 @@ export default function Dashboard() {
         </motion.div>
 
         <motion.div variants={itemVariants} className="mt-8">
-          <ChartsSection />
+          <ChartsSection feedItems={feedItems} alerts={alerts} />
         </motion.div>
 
         {/* Footer Stats */}

@@ -11,11 +11,24 @@ const DEBOUNCE_MS = 300
 function toFeedItem(event: any): FeedItem {
   return {
     id: event.id,
-    title: String(event.payload?.title ?? event.source ?? 'Signal event'),
-    description: String(event.payload?.description ?? 'Queued event'),
-    impact: (event.payload?.impact ?? 'LOW') as FeedItem['impact'],
-    timestamp: new Date(event.created_at),
-    source: event.source,
+    title: String(event.title ?? event.summary ?? event.payload?.title ?? event.source ?? 'Signal event'),
+    description: String(event.description ?? event.summary ?? event.payload?.description ?? 'Processed weather signal'),
+    impact: (event.impact ?? event.risk ?? event.payload?.impact ?? 'LOW') as FeedItem['impact'],
+    timestamp: new Date(event.processedAt ?? event.processed_at ?? event.created_at ?? event.timestamp),
+    source: String(event.source ?? event.payload?.source ?? 'unknown'),
+    metric: typeof event.metric === 'number'
+      ? event.metric
+      : typeof event.precipitation === 'number'
+      ? event.precipitation
+      : typeof event.temperature === 'number'
+      ? event.temperature
+      : undefined,
+    processedAt: event.processedAt ? new Date(event.processedAt) : event.processed_at ? new Date(event.processed_at) : undefined,
+    locationName: String(event.locationName ?? event.location_name ?? event.payload?.locationName ?? ''),
+    temperature: typeof event.temperature === 'number' ? event.temperature : undefined,
+    precipitation: typeof event.precipitation === 'number' ? event.precipitation : undefined,
+    humidity: typeof event.humidity === 'number' ? event.humidity : undefined,
+    windSpeed: typeof event.windSpeed === 'number' ? event.windSpeed : typeof event.wind_speed === 'number' ? event.wind_speed : undefined,
   }
 }
 
@@ -129,8 +142,7 @@ export function useSignalXRealtime() {
         const userId = meData.userId as string
 
         setFeedItems((feedData.items ?? []).map((item: any) => ({
-          ...item,
-          timestamp: new Date(item.timestamp),
+          ...toFeedItem(item),
         })))
         setInsights(insightData.items ?? [])
         setAlerts((alertData.items ?? []).map((item: any) => ({
@@ -142,9 +154,9 @@ export function useSignalXRealtime() {
           .channel(`realtime-${userId}`)
           .on(
             'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'events', filter: `user_id=eq.${userId}` },
+            { event: 'INSERT', schema: 'public', table: 'signals', filter: `user_id=eq.${userId}` },
             (payload) => {
-              console.debug('[SignalXRealtime] new event payload:', payload)
+              console.debug('[SignalXRealtime] new signal payload:', payload)
               updateBuffer.feed.push(toFeedItem(payload.new))
               if (!updateBuffer.timer) {
                 updateBuffer.timer = window.setTimeout(flushBuffer, DEBOUNCE_MS)

@@ -10,25 +10,49 @@ type ImpactOption = (typeof impactOptions)[number]
 
 export function SignalIngestionPanel() {
   const { user, loading, getIdToken } = useAuth()
-  const [source, setSource] = useState('webhook')
-  const [title, setTitle] = useState('New signal detected')
-  const [description, setDescription] = useState('Incoming signal data requires review.')
+  const [source, setSource] = useState('open-meteo')
+  const [locationName, setLocationName] = useState('')
+  const [latitude, setLatitude] = useState('')
+  const [longitude, setLongitude] = useState('')
+  const [title, setTitle] = useState('Local flood risk analysis')
+  const [description, setDescription] = useState('Fetch weather for your current location and generate a risk recommendation.')
   const [impact, setImpact] = useState<ImpactOption>('MEDIUM')
-  const [metric, setMetric] = useState('0.00')
   const [status, setStatus] = useState<string | null>(null)
+  const [locationStatus, setLocationStatus] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const canSubmit = useMemo(
-    () => !!user && source.trim().length > 0 && title.trim().length > 0,
-    [user, source, title]
+    () => !!user && source.trim().length > 0 && latitude.trim().length > 0 && longitude.trim().length > 0,
+    [user, source, latitude, longitude]
   )
+
+  const handleDetectLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('Geolocation is not available in your browser.')
+      return
+    }
+
+    setLocationStatus('Detecting your location…')
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLatitude(String(position.coords.latitude.toFixed(5)))
+        setLongitude(String(position.coords.longitude.toFixed(5)))
+        setLocationStatus('Location detected successfully.')
+      },
+      (error) => {
+        console.error('[SignalIngestionPanel] geolocation error:', error)
+        setLocationStatus('Unable to detect location. Please enter coordinates manually.')
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setStatus(null)
 
     if (!canSubmit) {
-      setStatus('Please sign in and complete the required fields.')
+      setStatus('Please sign in and provide latitude and longitude.')
       return
     }
 
@@ -40,20 +64,23 @@ export function SignalIngestionPanel() {
         throw new Error('Unable to retrieve auth token')
       }
 
-      const payload = {
-        title,
-        description,
-        impact,
-        metric: Number(metric) || 0,
-      }
-
       const response = await fetch('/api/events', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ source, payload }),
+        body: JSON.stringify({
+          source,
+          locationName: locationName || undefined,
+          latitude: Number(latitude),
+          longitude: Number(longitude),
+          payload: {
+            title,
+            description,
+            impact,
+          },
+        }),
       })
 
       const result = await response.json()
@@ -61,19 +88,18 @@ export function SignalIngestionPanel() {
         throw new Error(result?.error || 'Failed to submit signal event')
       }
 
-      const sentEvent = result.event
-      if (sentEvent && typeof window !== 'undefined') {
+      const sentSignal = result.signal ?? result.event
+      if (sentSignal && typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('signalx:new-event', {
-            detail: sentEvent,
+            detail: sentSignal,
           })
         )
       }
 
-      setStatus('Signal submitted successfully. Processing will begin shortly.')
-      setTitle('')
-      setDescription('')
-      setMetric('0.00')
+      setStatus('Signal submitted successfully. Live decision data is now updating.')
+      setTitle('Local flood risk analysis')
+      setDescription('Fetch weather for your current location and generate a risk recommendation.')
       setImpact('MEDIUM')
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Error submitting signal')
@@ -115,13 +141,68 @@ export function SignalIngestionPanel() {
                 value={source}
                 onChange={(event) => setSource(event.target.value)}
                 className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
-                placeholder="e.g. webhook, sensor, api"
+                placeholder="e.g. open-meteo"
                 required
               />
             </label>
 
             <label className="space-y-2 text-sm text-foreground/70">
-              Impact
+              Location label
+              <input
+                value={locationName}
+                onChange={(event) => setLocationName(event.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
+                placeholder="City, neighborhood or region"
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-2 text-sm text-foreground/70">
+              Latitude
+              <input
+                value={latitude}
+                onChange={(event) => setLatitude(event.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
+                placeholder="e.g. 37.7749"
+                required
+              />
+            </label>
+
+            <label className="space-y-2 text-sm text-foreground/70">
+              Longitude
+              <input
+                value={longitude}
+                onChange={(event) => setLongitude(event.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
+                placeholder="e.g. -122.4194"
+                required
+              />
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleDetectLocation}
+            className="inline-flex items-center justify-center rounded-3xl bg-white/5 px-5 py-3 text-sm font-semibold text-cyan-300 transition hover:bg-white/10"
+          >
+            Detect my location
+          </button>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-2 text-sm text-foreground/70">
+              Event Title
+              <input
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
+                placeholder="Flood risk analysis"
+                required
+              />
+            </label>
+
+            <label className="space-y-2 text-sm text-foreground/70">
+              Expected risk
               <select
                 value={impact}
                 onChange={(event) => setImpact(event.target.value as ImpactOption)}
@@ -135,44 +216,14 @@ export function SignalIngestionPanel() {
           </div>
 
           <label className="space-y-2 text-sm text-foreground/70">
-            Event Title
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
-              placeholder="Enter a signal title"
-              required
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-foreground/70">
             Description
             <textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               className="w-full min-h-[120px] rounded-3xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
-              placeholder="Describe the incoming data or anomaly"
+              placeholder="Describe the local weather or signal context"
             />
           </label>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-2 text-sm text-foreground/70">
-              Metric
-              <input
-                value={metric}
-                onChange={(event) => setMetric(event.target.value)}
-                className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
-                placeholder="e.g. 87.1"
-                inputMode="decimal"
-              />
-            </label>
-            <div className="space-y-2 text-sm text-foreground/70">
-              <span>User</span>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-foreground">
-                {user.email ?? user.uid}
-              </div>
-            </div>
-          </div>
 
           {status && (
             <div className="rounded-3xl bg-white/5 px-4 py-3 text-sm text-foreground/80">
@@ -185,7 +236,7 @@ export function SignalIngestionPanel() {
             disabled={isSubmitting}
             className="inline-flex items-center justify-center rounded-3xl bg-cyan-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-cyan-500/60"
           >
-            {isSubmitting ? 'Submitting event…' : 'Submit signal event'}
+            {isSubmitting ? 'Submitting signal…' : 'Run flood risk check'}
           </button>
         </form>
       )}

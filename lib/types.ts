@@ -11,6 +11,24 @@ export interface EventRecord {
   updated_at: string
 }
 
+export interface SignalRecord {
+  id: string
+  event_id: string
+  user_id: string
+  source: string
+  location_name: string | null
+  latitude: number | null
+  longitude: number | null
+  risk: 'HIGH' | 'MEDIUM' | 'LOW'
+  summary: string
+  temperature: number | null
+  precipitation: number | null
+  humidity: number | null
+  wind_speed: number | null
+  processed_at: string
+  created_at: string
+}
+
 export interface InsightRecord {
   id: string
   event_id: string
@@ -48,6 +66,19 @@ export interface FeedItem {
   impact: 'HIGH' | 'MEDIUM' | 'LOW'
   timestamp: Date
   source: string
+  metric?: number
+  processedAt?: Date
+  locationName?: string
+  temperature?: number
+  precipitation?: number
+  humidity?: number
+  windSpeed?: number
+  weather?: {
+    temperature?: number
+    precipitation?: number
+    humidity?: number
+    windSpeed?: number
+  }
 }
 
 export interface AIInsight {

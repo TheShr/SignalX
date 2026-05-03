@@ -77,6 +77,8 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
    - `insights`
    - `alerts`
 3. Use the Supabase SQL editor or migration system to create the correct schema.
+   - The required schema is available in `db/schema.sql`
+   - Run that file in the Supabase SQL editor or import it via your migration workflow
 4. Copy the Supabase URL and anon/public key to `.env.local`.
 5. Copy the Supabase service role key to `.env.local` for server-side operations.
 

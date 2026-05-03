@@ -139,6 +139,20 @@ Use the default command:
 pnpm build
 ```
 
+### Worker Scheduling
+
+SignalX includes a protected worker endpoint at `/api/worker` for scheduled event processing. Configure a scheduler to call this endpoint regularly and keep the pipeline moving.
+
+- Set `WORKER_TRIGGER_SECRET` in production.
+- Configure your scheduler or cron job to call the worker endpoint with the secret:
+
+```bash
+curl -X GET https://your-app.vercel.app/api/worker \
+  -H "Authorization: Bearer $WORKER_TRIGGER_SECRET"
+```
+
+If you prefer a service role key, the route also accepts `Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY`.
+
 ### Output Directory
 
 Vercel automatically detects Next.js and uses the correct settings.

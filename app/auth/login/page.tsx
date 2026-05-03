@@ -9,7 +9,9 @@ import { GradientBackground } from '@/components/animations/gradient-background'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { loginWithGoogle, user, loading } = useAuth()
+  const { login, loginWithGoogle, user, loading } = useAuth()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -62,6 +64,54 @@ export default function LoginPage() {
           transition={{ delay: 0.3 }}
         >
           <h2 className="text-xl font-semibold text-foreground mb-6">Welcome Back</h2>
+
+          <div className="space-y-4 mb-6">
+            <label className="block text-sm font-medium text-foreground/80">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400"
+              placeholder="you@example.com"
+            />
+
+            <label className="block text-sm font-medium text-foreground/80">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400"
+              placeholder="Enter your password"
+            />
+
+            <motion.button
+              type="button"
+              onClick={async () => {
+                setError('')
+                setIsLoading(true)
+                try {
+                  await login(email, password)
+                  router.push('/dashboard')
+                } catch (err: any) {
+                  setError(err.message || 'Login failed')
+                } finally {
+                  setIsLoading(false)
+                }
+              }}
+              disabled={isLoading}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-purple-600 px-4 py-3 text-sm font-semibold text-white transition hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              {isLoading ? 'Signing in…' : 'Sign in with email'}
+            </motion.button>
+          </div>
+
+          <div className="flex items-center gap-4 mb-6">
+            <div className="flex-1 h-px bg-white/10" />
+            <span className="text-sm text-foreground/40">or continue with</span>
+            <div className="flex-1 h-px bg-white/10" />
+          </div>
 
           <motion.button
             type="button"
@@ -129,16 +179,15 @@ export default function LoginPage() {
           </div>
 
           {/* Sign Up Link */}
-          <Link href="/auth/register">
-            <motion.button
-              type="button"
-              className="w-full px-4 py-3 rounded-lg border border-white/20 text-foreground font-semibold hover:bg-white/5 transition-all"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              Create Account
-            </motion.button>
-          </Link>
+          <motion.button
+            type="button"
+            onClick={() => router.push('/auth/register')}
+            className="w-full px-4 py-3 rounded-lg border border-white/20 text-foreground font-semibold hover:bg-white/5 transition-all"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            Create Account
+          </motion.button>
         </motion.div>
 
       </motion.div>

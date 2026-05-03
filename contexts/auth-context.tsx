@@ -9,6 +9,8 @@ import {
 } from 'react'
 import {
   User,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
   signOut,
@@ -19,6 +21,8 @@ import { auth } from '@/lib/firebase'
 interface AuthContextType {
   user: User | null
   loading: boolean
+  register: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<void>
   loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>
   getIdToken: () => Promise<string | null>
@@ -38,6 +42,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => unsubscribe()
   }, [])
+
+  const register = async (email: string, password: string) => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      )
+      setUser(userCredential.user)
+    } catch (error) {
+      throw error
+    }
+  }
+
+  const login = async (email: string, password: string) => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      setUser(userCredential.user)
+    } catch (error) {
+      throw error
+    }
+  }
 
   const loginWithGoogle = async () => {
     try {
@@ -67,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, loginWithGoogle, logout, getIdToken }}
+      value={{ user, loading, register, login, loginWithGoogle, logout, getIdToken }}
     >
       {children}
     </AuthContext.Provider>

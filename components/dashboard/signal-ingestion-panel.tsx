@@ -4,9 +4,14 @@ import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/contexts/auth-context'
 
-const impactOptions = ['HIGH', 'MEDIUM', 'LOW'] as const
-
-type ImpactOption = (typeof impactOptions)[number]
+function isUrl(value: string) {
+  try {
+    new URL(value)
+    return true
+  } catch {
+    return false
+  }
+}
 
 export function SignalIngestionPanel() {
   const { user, loading, getIdToken } = useAuth()
@@ -14,17 +19,13 @@ export function SignalIngestionPanel() {
   const [locationName, setLocationName] = useState('')
   const [latitude, setLatitude] = useState('')
   const [longitude, setLongitude] = useState('')
-  const [title, setTitle] = useState('Local flood risk analysis')
-  const [description, setDescription] = useState('Fetch weather for your current location and generate a risk recommendation.')
-  const [impact, setImpact] = useState<ImpactOption>('MEDIUM')
   const [status, setStatus] = useState<string | null>(null)
   const [locationStatus, setLocationStatus] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const canSubmit = useMemo(
-    () => !!user && source.trim().length > 0 && latitude.trim().length > 0 && longitude.trim().length > 0,
-    [user, source, latitude, longitude]
-  )
+  const sourceIsUrl = isUrl(source)
+  const coordinatesProvided = latitude.trim().length > 0 && longitude.trim().length > 0
+  const canSubmit = !!user && source.trim().length > 0 && (sourceIsUrl || coordinatesProvided)
 
   const handleDetectLocation = () => {
     if (!navigator.geolocation) {
@@ -51,13 +52,16 @@ export function SignalIngestionPanel() {
     event.preventDefault()
     setStatus(null)
 
-    if (!canSubmit) {
-      setStatus('Please sign in and provide latitude and longitude.')
+    if (!user) {
+      setStatus('Please sign in before submitting a signal.')
       return
     }
 
-    if (!user) {
-      throw new Error('No authenticated user found')
+    if (!canSubmit) {
+      setStatus(sourceIsUrl
+        ? 'Enter a valid source URL or add latitude and longitude.'
+        : 'Provide latitude and longitude for coordinate-based analysis.')
+      return
     }
 
     setIsSubmitting(true)
@@ -68,25 +72,25 @@ export function SignalIngestionPanel() {
         throw new Error('Unable to retrieve auth token')
       }
 
+      const requestBody: Record<string, unknown> = {
+        source: source.trim(),
+      }
+
+      if (locationName.trim()) {
+        requestBody.locationName = locationName.trim()
+      }
+      if (coordinatesProvided) {
+        requestBody.latitude = Number(latitude)
+        requestBody.longitude = Number(longitude)
+      }
+
       const response = await fetch('/api/events', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          source,
-          locationName: locationName || undefined,
-          latitude: Number(latitude),
-          longitude: Number(longitude),
-          payload: {
-            title,
-            description,
-            impact,
-          },
-          userEmail: user.email ?? undefined,
-          userId: user.uid,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       const result = await response.json()
@@ -94,19 +98,12 @@ export function SignalIngestionPanel() {
         throw new Error(result?.error || 'Failed to submit signal event')
       }
 
-      const sentSignal = result.signal ?? result.event
-      if (sentSignal && typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('signalx:new-event', {
-            detail: sentSignal,
-          })
-        )
-      }
-
       setStatus('Signal submitted successfully. Live decision data is now updating.')
-      setTitle('Local flood risk analysis')
-      setDescription('Fetch weather for your current location and generate a risk recommendation.')
-      setImpact('MEDIUM')
+      setSource('open-meteo')
+      setLocationName('')
+      setLatitude('')
+      setLongitude('')
+      setLocationStatus(null)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Error submitting signal')
       console.error('[SignalIngestionPanel] submit error:', error)
@@ -128,7 +125,7 @@ export function SignalIngestionPanel() {
           <h2 className="text-2xl font-semibold text-foreground">Submit a live event</h2>
         </div>
         <p className="max-w-xl text-sm text-foreground/60">
-          Create a new signal event and push it into the SignalX pipeline for AI analysis and alert generation.
+          Capture a URL data source or location coordinates and send the signal to SignalX for AI analysis.
         </p>
       </div>
 
@@ -157,7 +154,7 @@ export function SignalIngestionPanel() {
                 value={source}
                 onChange={(event) => setSource(event.target.value)}
                 className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
-                placeholder="e.g. open-meteo"
+                placeholder="https://api.example.com/data or open-meteo"
                 required
               />
             </label>
@@ -181,7 +178,7 @@ export function SignalIngestionPanel() {
                 onChange={(event) => setLatitude(event.target.value)}
                 className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
                 placeholder="e.g. 37.7749"
-                required
+                required={!sourceIsUrl}
               />
             </label>
 
@@ -192,7 +189,7 @@ export function SignalIngestionPanel() {
                 onChange={(event) => setLongitude(event.target.value)}
                 className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
                 placeholder="e.g. -122.4194"
-                required
+                required={!sourceIsUrl}
               />
             </label>
           </div>
@@ -205,41 +202,17 @@ export function SignalIngestionPanel() {
             Detect my location
           </button>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-2 text-sm text-foreground/70">
-              Event Title
-              <input
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
-                placeholder="Flood risk analysis"
-                required
-              />
-            </label>
-
-            <label className="space-y-2 text-sm text-foreground/70">
-              Expected risk
-              <select
-                value={impact}
-                onChange={(event) => setImpact(event.target.value as ImpactOption)}
-                className="w-full rounded-2xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
-              >
-                {impactOptions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </label>
+          <div className="rounded-3xl bg-white/5 p-4 text-sm text-foreground/70">
+            {sourceIsUrl
+              ? 'URL mode: SignalX will fetch and interpret JSON from the provided endpoint.'
+              : 'Coordinates mode: SignalX will fetch live weather data through Open-Meteo.'}
           </div>
 
-          <label className="space-y-2 text-sm text-foreground/70">
-            Description
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              className="w-full min-h-[120px] rounded-3xl border border-white/10 bg-transparent px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60"
-              placeholder="Describe the local weather or signal context"
-            />
-          </label>
+          {locationStatus && (
+            <div className="rounded-3xl bg-white/5 px-4 py-3 text-sm text-foreground/80">
+              {locationStatus}
+            </div>
+          )}
 
           {status && (
             <div className="rounded-3xl bg-white/5 px-4 py-3 text-sm text-foreground/80">
@@ -252,7 +225,7 @@ export function SignalIngestionPanel() {
             disabled={isSubmitting}
             className="inline-flex items-center justify-center rounded-3xl bg-cyan-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-cyan-500/60"
           >
-            {isSubmitting ? 'Submitting signal…' : 'Run flood risk check'}
+            {isSubmitting ? 'Submitting signal…' : 'Run live risk analysis'}
           </button>
         </form>
       )}

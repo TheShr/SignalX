@@ -5,17 +5,12 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/contexts/auth-context'
-import { Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { GradientBackground } from '@/components/animations/gradient-background'
 
 export default function RegisterPage() {
   const router = useRouter()
-  const { register, user, loading } = useAuth()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const { loginWithGoogle, user, loading } = useAuth()
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -23,39 +18,6 @@ export default function RegisterPage() {
   if (!loading && user) {
     router.push('/dashboard')
     return null
-  }
-
-  const validatePassword = (pwd: string) => {
-    return pwd.length >= 8 && /[A-Z]/.test(pwd) && /[0-9]/.test(pwd)
-  }
-
-  const isPasswordValid = validatePassword(password)
-  const passwordsMatch = password === confirmPassword && password.length > 0
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-
-    if (!isPasswordValid) {
-      setError('Password must be at least 8 characters with uppercase and numbers')
-      return
-    }
-
-    if (!passwordsMatch) {
-      setError('Passwords do not match')
-      return
-    }
-
-    setIsLoading(true)
-
-    try {
-      await register(email, password)
-      router.push('/dashboard')
-    } catch (err: any) {
-      setError(err.message || 'Failed to create account')
-    } finally {
-      setIsLoading(false)
-    }
   }
 
   const containerVariants = {
@@ -102,6 +64,25 @@ export default function RegisterPage() {
         >
           <h2 className="text-xl font-semibold text-foreground mb-6">Create Account</h2>
 
+          <motion.button
+            type="button"
+            onClick={async () => {
+              setError('')
+              setIsLoading(true)
+              try {
+                await loginWithGoogle()
+                router.push('/dashboard')
+              } catch (err: any) {
+                setError(err.message || 'Google sign-up failed')
+              } finally {
+                setIsLoading(false)
+              }
+            }}
+            className="w-full mb-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-white/20"
+          >
+            Continue with Google
+          </motion.button>
+
           {error && (
             <motion.div
               className="mb-6 p-4 rounded-lg bg-red-500/20 border border-red-500/50 text-red-200 text-sm flex items-start gap-3"
@@ -113,148 +94,34 @@ export default function RegisterPage() {
             </motion.div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email Input */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-            >
-              <label className="block text-sm font-medium text-foreground/80 mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-foreground placeholder-foreground/40 focus:outline-none focus:border-cyan-400/50 focus:ring-1 focus:ring-cyan-400/30 transition-all"
-                required
-              />
-            </motion.div>
+          <div className="space-y-4">
+            <div className="rounded-3xl bg-white/5 p-4 text-sm text-foreground/70 border border-white/10">
+              <p className="font-semibold text-foreground/80">Secure onboarding with Google.</p>
+              <p className="mt-2">SignalX captures your email from Firebase automatically and attaches it to every signal.</p>
+            </div>
 
-            {/* Password Input */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-            >
-              <label className="block text-sm font-medium text-foreground/80 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-foreground placeholder-foreground/40 focus:outline-none focus:border-cyan-400/50 focus:ring-1 focus:ring-cyan-400/30 transition-all"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/60 transition-colors"
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-              <p className="text-xs text-foreground/60 mt-2">
-                Minimum 8 characters with uppercase and numbers
-              </p>
-            </motion.div>
-
-            {/* Password Strength Indicator */}
-            {password && (
-              <motion.div
-                className="space-y-2"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-              >
-                <div className="flex items-center gap-2 text-xs">
-                  <div
-                    className={`h-1 w-1 rounded-full ${
-                      password.length >= 8 ? 'bg-green-400' : 'bg-red-400'
-                    }`}
-                  />
-                  <span className="text-foreground/60">Length ≥ 8 characters</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <div
-                    className={`h-1 w-1 rounded-full ${
-                      /[A-Z]/.test(password) ? 'bg-green-400' : 'bg-red-400'
-                    }`}
-                  />
-                  <span className="text-foreground/60">Contains uppercase letter</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <div
-                    className={`h-1 w-1 rounded-full ${
-                      /[0-9]/.test(password) ? 'bg-green-400' : 'bg-red-400'
-                    }`}
-                  />
-                  <span className="text-foreground/60">Contains number</span>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Confirm Password Input */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
-            >
-              <label className="block text-sm font-medium text-foreground/80 mb-2">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-foreground placeholder-foreground/40 focus:outline-none focus:border-cyan-400/50 focus:ring-1 focus:ring-cyan-400/30 transition-all"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/60 transition-colors"
-                >
-                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-              {confirmPassword && (
-                <div className="flex items-center gap-2 mt-2">
-                  {passwordsMatch ? (
-                    <>
-                      <CheckCircle2 size={16} className="text-green-400" />
-                      <span className="text-xs text-green-400">Passwords match</span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle size={16} className="text-red-400" />
-                      <span className="text-xs text-red-400">Passwords do not match</span>
-                    </>
-                  )}
-                </div>
-              )}
-            </motion.div>
-
-            {/* Sign Up Button */}
             <motion.button
-              type="submit"
-              disabled={isLoading || !isPasswordValid || !passwordsMatch}
-              className="w-full mt-6 px-4 py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-semibold hover:from-cyan-400 hover:to-purple-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={async () => {
+                setError('')
+                setIsLoading(true)
+                try {
+                  await loginWithGoogle()
+                  router.push('/dashboard')
+                } catch (err: any) {
+                  setError(err.message || 'Google sign-up failed')
+                } finally {
+                  setIsLoading(false)
+                }
+              }}
+              disabled={isLoading}
+              className="w-full mt-2 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-purple-600 px-4 py-3 text-sm font-semibold text-white transition hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.7 }}
             >
-              {isLoading ? 'Creating Account...' : 'Create Account'}
+              {isLoading ? 'Signing up…' : 'Continue with Google'}
             </motion.button>
-          </form>
+          </div>
 
           {/* Divider */}
           <div className="my-6 flex items-center gap-4">

@@ -5,6 +5,15 @@ import { processIncomingEvent } from '@/services/ai'
 import { sendHighRiskEmail } from '@/services/email'
 import { createEventSchema } from '@/services/validators'
 
+const isUrl = (value: string) => {
+  try {
+    new URL(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -21,25 +30,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: result.error.flatten() }, { status: 400 })
     }
 
-    if (result.data.userId && result.data.userId !== decoded.uid) {
-      return NextResponse.json({ error: 'Authenticated user mismatch' }, { status: 401 })
-    }
-
-    if (result.data.userEmail && decoded.email && result.data.userEmail !== decoded.email) {
-      return NextResponse.json({ error: 'Authenticated email mismatch' }, { status: 401 })
-    }
-
     const user = await findOrCreateUser(decoded.uid, decoded.email ?? '')
     const event = await createEvent(user.id, {
       source: result.data.source,
       payload: {
         source: result.data.source,
-        latitude: result.data.latitude,
-        longitude: result.data.longitude,
+        latitude: result.data.latitude ?? null,
+        longitude: result.data.longitude ?? null,
         locationName: result.data.locationName ?? null,
         rawPayload: result.data.payload ?? null,
-        userEmail: decoded.email ?? null,
-        userId: decoded.uid,
+        sourceType: isUrl(result.data.source) ? 'url' : 'coordinates',
       },
     })
 
@@ -80,8 +80,8 @@ export async function POST(request: Request) {
     let alert = null
     if (processed.impact === 'HIGH') {
       alert = await createAlert(user.id, event.id, {
-        title: '⚠️ High flood risk detected',
-        message: processed.description,
+        title: '⚠️ High-impact alert',
+        message: processed.explanation,
         priority: 'CRITICAL',
         resolved: false,
       })

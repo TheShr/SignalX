@@ -183,6 +183,19 @@ async function fetchJsonFromUrl(url: string) {
   }
 }
 
+function parseJsonString(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(value)
+    return typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : null
+  } catch {
+    return null
+  }
+}
+
 async function fetchGroqInsight(rawData: unknown, parsedData: Record<string, unknown>) {
   const apiKey = process.env.GROQ_API_KEY
   const apiUrl = process.env.GROQ_API_URL ?? 'https://api.groq.com/v1/interpret'
@@ -190,7 +203,7 @@ async function fetchGroqInsight(rawData: unknown, parsedData: Record<string, unk
     return null
   }
 
-  const prompt = `Analyze the provided JSON data and do the following:\n1. Detect any risks or anomalies.\n2. Classify overall risk as LOW, MEDIUM, or HIGH.\n3. Summarize the key signal in plain language.\n4. Explain why the risk level was assigned.\n5. Recommend a concrete next action.\n\nReturn a JSON object with keys: summary, risk, explanation, suggested_action, confidence.`
+  const prompt = `You are an AI analyst for real-time risk signals. Analyze the provided JSON data and return a JSON object with the keys: summary, risk, explanation, suggested_action, confidence. Use only LOW, MEDIUM, or HIGH for risk. Keep the summary concise and highlight the most critical observation. Do not include any additional text outside the JSON object.`
 
   const payload = {
     prompt,
@@ -220,7 +233,21 @@ async function fetchGroqInsight(rawData: unknown, parsedData: Record<string, unk
       throw new Error(`Groq API returned ${response.status}`)
     }
 
-    return await response.json()
+    const data = await response.json()
+    if (typeof data !== 'object' || data === null) {
+      return null
+    }
+
+    const candidate = (data as any).output ?? (data as any).result ?? data
+    if (typeof candidate === 'string') {
+      return parseJsonString(candidate)
+    }
+
+    if (typeof candidate === 'object' && candidate !== null) {
+      return candidate as Record<string, unknown>
+    }
+
+    return null
   } finally {
     clearTimeout(timeout)
   }
@@ -325,7 +352,13 @@ export async function processIncomingEvent(input: {
       : 'Maintain normal operations and observe the next update.'
   const defaultConfidence = derivedImpact === 'HIGH' ? 0.95 : derivedImpact === 'MEDIUM' ? 0.82 : 0.68
 
-  const groqResult = await fetchGroqInsight(rawData, sanitizeJson(metrics) as Record<string, unknown>)
+  let groqResult: Record<string, unknown> | null = null
+  try {
+    groqResult = await fetchGroqInsight(rawData, sanitizeJson(metrics) as Record<string, unknown>)
+  } catch (aiError) {
+    console.warn('[processIncomingEvent] Groq request failed:', aiError)
+    groqResult = null
+  }
 
   const finalRisk = groqResult && typeof groqResult.risk === 'string' && ['HIGH', 'MEDIUM', 'LOW'].includes(groqResult.risk.toUpperCase())
     ? (groqResult.risk.toUpperCase() as ImpactLevel)

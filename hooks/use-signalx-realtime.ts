@@ -36,6 +36,13 @@ export function useSignalXRealtime() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const [insights, setInsights] = useState<AIInsight[]>([])
   const [alerts, setAlerts] = useState<AlertModel[]>([])
+  const [analytics, setAnalytics] = useState<{
+    total_signals: number
+    high_risk: number
+    medium_risk: number
+    low_risk: number
+    active_alerts: number
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { getIdToken, loading: authLoading } = useAuth()
@@ -119,21 +126,23 @@ export function useSignalXRealtime() {
           'Content-Type': 'application/json',
         }
 
-        const [feedResponse, insightsResponse, alertsResponse, meResponse] = await Promise.all([
+        const [feedResponse, insightsResponse, alertsResponse, analyticsResponse, meResponse] = await Promise.all([
           fetch('/api/feed?page=1&pageSize=20', { headers: header }),
           fetch('/api/insights?page=1&pageSize=20', { headers: header }),
           fetch('/api/alerts?page=1&pageSize=20', { headers: header }),
+          fetch('/api/analytics', { headers: header }),
           fetch('/api/me', { headers: header }),
         ])
 
-        if (!feedResponse.ok || !insightsResponse.ok || !alertsResponse.ok || !meResponse.ok) {
+        if (!feedResponse.ok || !insightsResponse.ok || !alertsResponse.ok || !analyticsResponse.ok || !meResponse.ok) {
           throw new Error('Failed to load initial signal data')
         }
 
-        const [feedData, insightData, alertData, meData] = await Promise.all([
+        const [feedData, insightData, alertData, analyticsData, meData] = await Promise.all([
           feedResponse.json(),
           insightsResponse.json(),
           alertsResponse.json(),
+          analyticsResponse.json(),
           meResponse.json(),
         ])
 
@@ -149,6 +158,7 @@ export function useSignalXRealtime() {
           ...item,
           timestamp: new Date(item.created_at ?? item.timestamp),
         })))
+        setAnalytics(analyticsData?.summary ?? null)
 
         realtimeChannel = supabaseBrowser
           .channel(`realtime-${userId}`)
@@ -158,6 +168,17 @@ export function useSignalXRealtime() {
             (payload) => {
               console.debug('[SignalXRealtime] new signal payload:', payload)
               updateBuffer.feed.push(toFeedItem(payload.new))
+              setAnalytics((prev) => {
+                if (!prev) return prev
+                const impact = (payload.new.risk ?? payload.new.impact ?? 'LOW') as 'HIGH' | 'MEDIUM' | 'LOW'
+                return {
+                  ...prev,
+                  total_signals: prev.total_signals + 1,
+                  high_risk: prev.high_risk + (impact === 'HIGH' ? 1 : 0),
+                  medium_risk: prev.medium_risk + (impact === 'MEDIUM' ? 1 : 0),
+                  low_risk: prev.low_risk + (impact === 'LOW' ? 1 : 0),
+                }
+              })
               if (!updateBuffer.timer) {
                 updateBuffer.timer = window.setTimeout(flushBuffer, DEBOUNCE_MS)
               }
@@ -191,6 +212,13 @@ export function useSignalXRealtime() {
                 priority: payload.new.priority,
                 timestamp: new Date(payload.new.created_at),
                 resolved: payload.new.resolved,
+              })
+              setAnalytics((prev) => {
+                if (!prev) return prev
+                return {
+                  ...prev,
+                  active_alerts: prev.active_alerts + 1,
+                }
               })
               if (!updateBuffer.timer) {
                 updateBuffer.timer = window.setTimeout(flushBuffer, DEBOUNCE_MS)
@@ -241,6 +269,7 @@ export function useSignalXRealtime() {
     feedItems,
     insights,
     alerts,
+    analytics,
     loading,
     error,
     resolveAlert,

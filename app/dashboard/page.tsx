@@ -11,7 +11,7 @@ import { SignalIngestionPanel } from '@/components/dashboard/signal-ingestion-pa
 import { useSignalXRealtime } from '@/hooks/use-signalx-realtime'
 
 export default function Dashboard() {
-  const { feedItems, insights, alerts, loading, error, resolveAlert } = useSignalXRealtime()
+  const { feedItems, insights, alerts, analytics, loading, error, resolveAlert } = useSignalXRealtime()
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -99,10 +99,26 @@ export default function Dashboard() {
           className="mt-12 grid grid-cols-2 sm:grid-cols-4 gap-4"
         >
           {[
-            { label: 'Active Decisions', value: '1,234', change: '+12.5%' },
-            { label: 'Processing Delay', value: '47ms', change: '-3.2%' },
-            { label: 'Model Accuracy', value: '94.2%', change: '+2.1%' },
-            { label: 'Alerts Resolved', value: '98%', change: '-0.4%' },
+            {
+              label: 'Total signals',
+              value: analytics ? analytics.total_signals.toLocaleString() : '—',
+              subtitle: 'Processed by SignalX',
+            },
+            {
+              label: 'High risk',
+              value: analytics ? analytics.high_risk.toString() : '—',
+              subtitle: 'Immediate attention needed',
+            },
+            {
+              label: 'Medium risk',
+              value: analytics ? analytics.medium_risk.toString() : '—',
+              subtitle: 'Monitor trends',
+            },
+            {
+              label: 'Active alerts',
+              value: analytics ? analytics.active_alerts.toString() : '—',
+              subtitle: 'Unresolved notifications',
+            },
           ].map((stat, i) => (
             <motion.div
               key={i}
@@ -110,14 +126,10 @@ export default function Dashboard() {
               whileHover={{ scale: 1.05, borderColor: 'rgba(0, 212, 255, 0.5)' }}
             >
               <p className="text-xs text-foreground/60 mb-2">{stat.label}</p>
-              <div className="flex items-baseline justify-between">
+              <div className="flex items-baseline justify-between gap-4">
                 <p className="text-2xl font-bold">{stat.value}</p>
-                <span className={`text-xs font-medium ${
-                  stat.change.startsWith('+') ? 'text-green-400' : 'text-red-400'
-                }`}>
-                  {stat.change}
-                </span>
               </div>
+              <p className="mt-3 text-xs text-foreground/50">{stat.subtitle}</p>
             </motion.div>
           ))}
         </motion.div>

@@ -36,6 +36,8 @@ export async function runWorkerBatch() {
           precipitation: insight.payload.weather?.precipitation ?? null,
           humidity: insight.payload.weather?.humidity ?? null,
           wind_speed: insight.payload.weather?.windSpeed ?? null,
+          raw_data: insight.payload.rawData,
+          parsed_data: insight.payload.parsedData,
           processed_at: new Date().toISOString(),
         })
 

@@ -25,6 +25,8 @@ export interface SignalRecord {
   precipitation: number | null
   humidity: number | null
   wind_speed: number | null
+  raw_data: Record<string, unknown> | null
+  parsed_data: Record<string, unknown> | null
   processed_at: string
   created_at: string
 }
@@ -73,6 +75,8 @@ export interface FeedItem {
   precipitation?: number
   humidity?: number
   windSpeed?: number
+  rawData?: Record<string, unknown> | null
+  parsedData?: Record<string, unknown> | null
   weather?: {
     temperature?: number
     precipitation?: number

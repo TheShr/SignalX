@@ -56,6 +56,10 @@ export function SignalIngestionPanel() {
       return
     }
 
+    if (!user) {
+      throw new Error('No authenticated user found')
+    }
+
     setIsSubmitting(true)
 
     try {
@@ -80,6 +84,8 @@ export function SignalIngestionPanel() {
             description,
             impact,
           },
+          userEmail: user.email ?? undefined,
+          userId: user.uid,
         }),
       })
 
@@ -134,6 +140,16 @@ export function SignalIngestionPanel() {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="grid gap-4">
+          <div className="rounded-3xl border border-cyan-400/10 bg-white/5 p-4 text-sm text-foreground/70">
+            Logged in as: {user.email ? (
+              <a href={`mailto:${user.email}`} className="text-cyan-300 hover:text-cyan-200 underline">
+                {user.email}
+              </a>
+            ) : (
+              <span>{user.uid}</span>
+            )}
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-2 text-sm text-foreground/70">
               Source

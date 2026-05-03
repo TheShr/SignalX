@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { verifyFirebaseToken } from '@/services/auth'
 import { createEvent, createSignal, createInsight, createAlert, findOrCreateUser, completeEventProcessing } from '@/services/db'
 import { processIncomingEvent } from '@/services/ai'
+import { sendHighRiskEmail } from '@/services/email'
 import { createEventSchema } from '@/services/validators'
 
 export async function POST(request: Request) {
@@ -20,6 +21,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: result.error.flatten() }, { status: 400 })
     }
 
+    if (result.data.userId && result.data.userId !== decoded.uid) {
+      return NextResponse.json({ error: 'Authenticated user mismatch' }, { status: 401 })
+    }
+
+    if (result.data.userEmail && decoded.email && result.data.userEmail !== decoded.email) {
+      return NextResponse.json({ error: 'Authenticated email mismatch' }, { status: 401 })
+    }
+
     const user = await findOrCreateUser(decoded.uid, decoded.email ?? '')
     const event = await createEvent(user.id, {
       source: result.data.source,
@@ -29,6 +38,8 @@ export async function POST(request: Request) {
         longitude: result.data.longitude,
         locationName: result.data.locationName ?? null,
         rawPayload: result.data.payload ?? null,
+        userEmail: decoded.email ?? null,
+        userId: decoded.uid,
       },
     })
 
@@ -53,6 +64,8 @@ export async function POST(request: Request) {
       precipitation: processed.payload.weather?.precipitation ?? null,
       humidity: processed.payload.weather?.humidity ?? null,
       wind_speed: processed.payload.weather?.windSpeed ?? null,
+      raw_data: processed.payload.rawData,
+      parsed_data: processed.payload.parsedData,
       processed_at: new Date().toISOString(),
     })
 
@@ -72,6 +85,15 @@ export async function POST(request: Request) {
         priority: 'CRITICAL',
         resolved: false,
       })
+
+      if (decoded.email) {
+        await sendHighRiskEmail({
+          recipient: decoded.email,
+          summary: processed.description,
+          explanation: processed.explanation,
+          recommendedAction: processed.suggestedAction,
+        })
+      }
     }
 
     await completeEventProcessing(event.id)

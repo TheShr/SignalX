@@ -72,6 +72,8 @@ export async function createSignal(
       precipitation: signal.precipitation,
       humidity: signal.humidity,
       wind_speed: signal.wind_speed,
+      raw_data: signal.raw_data,
+      parsed_data: signal.parsed_data,
       processed_at: signal.processed_at,
     })
     .select('*')
@@ -230,11 +232,40 @@ export async function fetchRecentNotifications(userId: string, limit = 8) {
   return (data ?? []) as AlertRecord[]
 }
 
+export async function fetchDashboardAnalytics(userId: string) {
+  const { data, error } = await supabaseServer
+    .rpc('analytics_summary', { p_user_id: userId })
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return data as {
+    total_signals: number
+    high_risk: number
+    medium_risk: number
+    low_risk: number
+    active_alerts: number
+  }
+}
+
+export async function fetchSignalTrend(userId: string, days = 7) {
+  const { data, error } = await supabaseServer
+    .rpc('signals_trend', { p_user_id: userId, p_days: days })
+
+  if (error) {
+    throw error
+  }
+
+  return (data ?? []) as Array<{ day: string; total: number }>
+}
+
 export async function fetchFeedItems(userId: string, page = 1, pageSize = DEFAULT_PAGE_SIZE) {
   const offset = (page - 1) * pageSize
   const { data, error } = await supabaseServer
     .from('signals')
-    .select('id, source, location_name, latitude, longitude, risk, summary, temperature, precipitation, humidity, wind_speed, processed_at, created_at')
+    .select('id, source, location_name, latitude, longitude, risk, summary, temperature, precipitation, humidity, wind_speed, raw_data, parsed_data, processed_at, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .range(offset, offset + pageSize - 1)
@@ -255,6 +286,8 @@ export async function fetchFeedItems(userId: string, page = 1, pageSize = DEFAUL
     precipitation: number | null
     humidity: number | null
     wind_speed: number | null
+    raw_data: Record<string, unknown> | null
+    parsed_data: Record<string, unknown> | null
     processed_at: string
     created_at: string
   }>
@@ -264,7 +297,7 @@ export async function fetchFeedItems(userId: string, page = 1, pageSize = DEFAUL
     title: signal.summary,
     description: `Risk: ${signal.risk}. ${signal.source}${signal.location_name ? ` — ${signal.location_name}` : ''}`,
     impact: signal.risk as 'HIGH' | 'MEDIUM' | 'LOW',
-    timestamp: signal.processed_at,
+    timestamp: new Date(signal.processed_at),
     source: signal.source,
     metric: signal.precipitation ?? signal.temperature ?? undefined,
     processedAt: new Date(signal.processed_at),
@@ -273,6 +306,8 @@ export async function fetchFeedItems(userId: string, page = 1, pageSize = DEFAUL
     precipitation: signal.precipitation ?? undefined,
     humidity: signal.humidity ?? undefined,
     windSpeed: signal.wind_speed ?? undefined,
+    rawData: signal.raw_data ?? undefined,
+    parsedData: signal.parsed_data ?? undefined,
   }))
 }
 

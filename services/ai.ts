@@ -1,10 +1,14 @@
 import type { ImpactLevel } from '@/lib/types'
 
-const MAX_RETRIES = 2
-const TIMEOUT_MS = 5000
+const TIMEOUT_MS = 15000
 
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function isUrl(value: string) {
+  try {
+    new URL(value)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -18,6 +22,23 @@ function toNumber(value: unknown): number | undefined {
   return undefined
 }
 
+function sanitizeJson(value: unknown): unknown {
+  if (value === null || typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
+    return value
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeJson(item))
+  }
+  if (typeof value === 'object' && value !== null) {
+    const sanitized: Record<string, unknown> = {}
+    for (const [key, item] of Object.entries(value)) {
+      sanitized[key] = sanitizeJson(item)
+    }
+    return sanitized
+  }
+  return null
+}
+
 function getPathValue(source: any, path: Array<string | number>): unknown {
   return path.reduce((current, key) => {
     if (current && typeof current === 'object' && key in current) {
@@ -27,16 +48,13 @@ function getPathValue(source: any, path: Array<string | number>): unknown {
   }, source)
 }
 
-function safeArrayValue(source: any, path: Array<string | number>): unknown {
-  if (!source || typeof source !== 'object') {
+function findMetric(raw: unknown, candidates: Array<Array<string | number>>): number | undefined {
+  if (!raw || typeof raw !== 'object') {
     return undefined
   }
-  return getPathValue(source, path)
-}
 
-function findMetric(raw: any, candidates: Array<Array<string | number>>): number | undefined {
   for (const path of candidates) {
-    const value = safeArrayValue(raw, path)
+    const value = getPathValue(raw, path)
     const numeric = toNumber(value)
     if (numeric !== undefined) {
       return numeric
@@ -45,78 +63,167 @@ function findMetric(raw: any, candidates: Array<Array<string | number>>): number
   return undefined
 }
 
-function extractWeatherMetrics(raw: unknown) {
-  const payload = raw ?? {}
-  const precipitation = findMetric(payload, [
+function crawlForNumbers(source: unknown, path: string[] = [], depth = 0, found: Record<string, number> = {}) {
+  if (depth > 5 || source === null) {
+    return found
+  }
+
+  if (typeof source === 'number' && Number.isFinite(source)) {
+    found[path.join('.')] = source
+    return found
+  }
+
+  if (typeof source === 'object') {
+    if (Array.isArray(source)) {
+      source.forEach((item, index) => crawlForNumbers(item, [...path, String(index)], depth + 1, found))
+    } else {
+      Object.entries(source).forEach(([key, value]) => crawlForNumbers(value, [...path, key], depth + 1, found))
+    }
+  }
+
+  return found
+}
+
+function extractMetrics(raw: unknown) {
+  const precipitation = findMetric(raw, [
     ['precipitation'],
     ['rain'],
     ['rainfall'],
     ['precip'],
     ['current_weather', 'precipitation'],
     ['hourly', 'rain_sum', 0],
+    ['hourly', 'precipitation', 0],
   ])
 
-  const temperature = findMetric(payload, [
+  const temperature = findMetric(raw, [
     ['temperature'],
     ['temp'],
     ['current_weather', 'temperature'],
     ['hourly', 'temperature_2m', 0],
+    ['hourly', 'temp', 0],
   ])
 
-  const humidity = findMetric(payload, [
+  const humidity = findMetric(raw, [
     ['humidity'],
+    ['relativeHumidity'],
     ['relativehumidity'],
     ['current_weather', 'humidity'],
     ['hourly', 'relativehumidity_2m', 0],
   ])
 
-  const windSpeed = findMetric(payload, [
+  const windSpeed = findMetric(raw, [
     ['windSpeed'],
     ['wind_speed'],
     ['current_weather', 'windspeed'],
+    ['hourly', 'windspeed_10m', 0],
   ])
 
-  return { precipitation, temperature, humidity, windSpeed }
+  const discoveredNumbers = crawlForNumbers(raw)
+
+  return {
+    temperature,
+    precipitation,
+    humidity,
+    windSpeed,
+    discoveredNumbers,
+  }
 }
 
-function determineImpact(metrics: ReturnType<typeof extractWeatherMetrics>): ImpactLevel {
+function determineImpact(metrics: ReturnType<typeof extractMetrics>): ImpactLevel {
   if (metrics.precipitation !== undefined) {
-    if (metrics.precipitation >= 12) {
-      return 'HIGH'
-    }
-    if (metrics.precipitation >= 6) {
-      return 'MEDIUM'
-    }
+    if (metrics.precipitation >= 15) return 'HIGH'
+    if (metrics.precipitation >= 8) return 'MEDIUM'
     return 'LOW'
   }
 
   if (metrics.temperature !== undefined) {
-    if (metrics.temperature >= 35) {
-      return 'HIGH'
-    }
-    if (metrics.temperature >= 28) {
-      return 'MEDIUM'
-    }
+    if (metrics.temperature >= 38) return 'HIGH'
+    if (metrics.temperature >= 30) return 'MEDIUM'
   }
 
-  if (metrics.humidity !== undefined && metrics.humidity >= 90) {
+  if (metrics.humidity !== undefined && metrics.humidity >= 92) {
     return 'MEDIUM'
   }
 
   return 'LOW'
 }
 
-function getMetricDisplay(metrics: ReturnType<typeof extractWeatherMetrics>) {
-  if (metrics.precipitation !== undefined) {
-    return metrics.precipitation
+function numericSummary(metrics: ReturnType<typeof extractMetrics>) {
+  const items: string[] = []
+  if (metrics.precipitation !== undefined) items.push(`Rain ${metrics.precipitation} mm`)
+  if (metrics.temperature !== undefined) items.push(`Temp ${metrics.temperature}°C`)
+  if (metrics.humidity !== undefined) items.push(`Humidity ${metrics.humidity}%`)
+  if (metrics.windSpeed !== undefined) items.push(`Wind ${metrics.windSpeed} m/s`)
+  if (items.length === 0 && Object.keys(metrics.discoveredNumbers).length > 0) {
+    Object.entries(metrics.discoveredNumbers).slice(0, 3).forEach(([path, value]) => items.push(`${path}: ${value}`))
   }
-  if (metrics.temperature !== undefined) {
-    return metrics.temperature
+  return items.join(' · ')
+}
+
+async function fetchJsonFromUrl(url: string) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS)
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch source URL with status ${response.status}`)
+    }
+
+    return await response.json()
+  } finally {
+    clearTimeout(timeout)
   }
-  if (metrics.humidity !== undefined) {
-    return metrics.humidity
+}
+
+async function fetchGroqInsight(rawData: unknown, parsedData: Record<string, unknown>) {
+  const apiKey = process.env.GROQ_API_KEY
+  const apiUrl = process.env.GROQ_API_URL ?? 'https://api.groq.com/v1/interpret'
+  if (!apiKey) {
+    return null
   }
-  return 0
+
+  const prompt = `Analyze the provided JSON data and do the following:\n1. Detect any risks or anomalies.\n2. Classify overall risk as LOW, MEDIUM, or HIGH.\n3. Summarize the key signal in plain language.\n4. Explain why the risk level was assigned.\n5. Recommend a concrete next action.\n\nReturn a JSON object with keys: summary, risk, explanation, suggested_action, confidence.`
+
+  const payload = {
+    prompt,
+    data: {
+      rawData,
+      parsedData,
+    },
+    max_tokens: 300,
+    temperature: 0.2,
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS)
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Groq API returned ${response.status}`)
+    }
+
+    return await response.json()
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 async function fetchOpenMeteoWeather(latitude: number, longitude: number) {
@@ -150,57 +257,6 @@ async function fetchOpenMeteoWeather(latitude: number, longitude: number) {
   }
 }
 
-async function fetchJsonFromWebhook(url: string) {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS)
-
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      signal: controller.signal,
-    })
-
-    if (!response.ok) {
-      throw new Error(`Webhook fetch failed with status ${response.status}`)
-    }
-
-    return await response.json()
-  } finally {
-    clearTimeout(timeout)
-  }
-}
-
-async function fetchGrokInsight(payload: Record<string, unknown>) {
-  if (!process.env.GROK_API_KEY) {
-    return null
-  }
-
-  const url = 'https://api.grok.example/v1/insights'
-  const response = await Promise.race([
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROK_API_KEY}`,
-      },
-      body: JSON.stringify({ input: payload }),
-    }),
-    new Promise<Response>((_, reject) =>
-      setTimeout(() => reject(new Error('Grok request timed out')), TIMEOUT_MS)
-    ),
-  ])
-
-  if (!response.ok) {
-    throw new Error(`Grok service error ${response.status}`)
-  }
-
-  return await response.json()
-}
-
 export interface ProcessedSignalPayload {
   title: string
   description: string
@@ -215,6 +271,8 @@ export interface ProcessedSignalPayload {
     humidity?: number
     windSpeed?: number
   }
+  rawData: Record<string, unknown>
+  parsedData: Record<string, unknown>
 }
 
 export interface ProcessedSignal {
@@ -235,92 +293,54 @@ export async function processIncomingEvent(input: {
   payload?: Record<string, unknown>
   locationName?: string
 }): Promise<ProcessedSignal> {
-  const rawData = input.latitude !== undefined && input.longitude !== undefined
-    ? await fetchOpenMeteoWeather(input.latitude, input.longitude)
-    : input.payload ?? {}
+  let rawData: unknown = input.payload ?? {}
 
-  const metrics = extractWeatherMetrics(rawData)
-  const impact = determineImpact(metrics)
-  const riskValue = metrics.precipitation ?? 0
-  const metric = getMetricDisplay(metrics)
+  if (isUrl(input.source)) {
+    rawData = await fetchJsonFromUrl(input.source)
+  } else if ((input.latitude !== undefined || input.longitude !== undefined) && !input.payload) {
+    if (input.latitude === undefined || input.longitude === undefined) {
+      throw new Error('Both latitude and longitude are required when source is not a URL')
+    }
+    rawData = await fetchOpenMeteoWeather(input.latitude, input.longitude)
+  }
 
-  const title = `Flood risk analysis for ${input.locationName ?? input.source}`
+  const metrics = extractMetrics(rawData)
+  const derivedImpact = determineImpact(metrics)
+  const metric = metrics.precipitation ?? metrics.temperature ?? metrics.humidity ?? metrics.windSpeed ?? 0
+
   const locationLabel = input.locationName ? ` in ${input.locationName}` : ''
   const summary =
-    impact === 'HIGH'
-      ? `Heavy rainfall detected${locationLabel}. Flood risk is HIGH and local response is required.`
-      : impact === 'MEDIUM'
-      ? `Moderate rain is expected${locationLabel}. Flood risk is MEDIUM, stay prepared.`
-      : `Weather conditions are stable${locationLabel}. Flood risk remains LOW.`
+    derivedImpact === 'HIGH'
+      ? `Data indicates a HIGH risk${locationLabel}. Immediate attention is recommended.`
+      : derivedImpact === 'MEDIUM'
+      ? `Data indicates a MEDIUM risk${locationLabel}. Continue monitoring closely.`
+      : `Data indicates LOW risk${locationLabel}. Conditions remain stable.`
 
-  const details = [`Risk: ${impact}`]
-  if (metrics.precipitation !== undefined) {
-    details.push(`Rain: ${metrics.precipitation} mm`)
-  }
-  if (metrics.temperature !== undefined) {
-    details.push(`Temp: ${metrics.temperature}°C`)
-  }
-  if (metrics.humidity !== undefined) {
-    details.push(`Humidity: ${metrics.humidity}%`)
-  }
-
-  const explanation = `${summary} ${details.join(' · ')}.`
+  const explanation = [summary, numericSummary(metrics)].filter(Boolean).join(' ')
   const suggestedAction =
-    impact === 'HIGH'
-      ? 'Avoid low-lying roads, stay indoors, and follow local emergency guidance.'
-      : impact === 'MEDIUM'
-      ? 'Monitor conditions closely and prepare to move to higher ground if needed.'
-      : 'Continue normal operations while observing the next update.'
-  const confidence = impact === 'HIGH' ? 0.96 : impact === 'MEDIUM' ? 0.84 : 0.72
+    derivedImpact === 'HIGH'
+      ? 'Act quickly: notify stakeholders, avoid affected areas, and follow local emergency guidance.'
+      : derivedImpact === 'MEDIUM'
+      ? 'Continue monitoring and prepare contingency plans in case conditions worsen.'
+      : 'Maintain normal operations and observe the next update.'
+  const defaultConfidence = derivedImpact === 'HIGH' ? 0.95 : derivedImpact === 'MEDIUM' ? 0.82 : 0.68
 
-  const processedPayload = {
-    title,
-    description: summary,
-    impact,
-    metric,
-    locationName: input.locationName ?? null,
-    weather: {
-      temperature: metrics.temperature,
-      precipitation: metrics.precipitation,
-      humidity: metrics.humidity,
-      windSpeed: metrics.windSpeed,
-    },
-    processedAt: new Date().toISOString(),
-  }
+  const groqResult = await fetchGroqInsight(rawData, sanitizeJson(metrics) as Record<string, unknown>)
 
-  const grokUpdate = await (async () => {
-    try {
-      const grokResult = await fetchGrokInsight({
-        source: input.source,
-        metrics,
-        impact,
-        rawData,
-      })
-      if (grokResult && typeof grokResult === 'object') {
-        return {
-          title: String(grokResult.title ?? title),
-          description: String(grokResult.explanation ?? summary),
-          explanation: String(grokResult.explanation ?? explanation),
-          suggestedAction: String(grokResult.suggested_action ?? suggestedAction),
-          confidence: Number(grokResult.confidence ?? confidence),
-        }
-      }
-    } catch (error) {
-      console.warn('[processIncomingEvent] Groq enrichment failed:', error)
-    }
-    return null
-  })()
+  const finalRisk = groqResult && typeof groqResult.risk === 'string' && ['HIGH', 'MEDIUM', 'LOW'].includes(groqResult.risk.toUpperCase())
+    ? (groqResult.risk.toUpperCase() as ImpactLevel)
+    : derivedImpact
 
-  const finalTitle = grokUpdate?.title ?? title
-  const finalDescription = grokUpdate?.description ?? summary
-  const finalExplanation = grokUpdate?.explanation ?? explanation
-  const finalSuggestedAction = grokUpdate?.suggestedAction ?? suggestedAction
-  const finalConfidence = grokUpdate?.confidence ?? confidence
+  const finalTitle = String(groqResult?.summary ?? summary)
+  const finalDescription = String(groqResult?.summary ?? summary)
+  const finalExplanation = String(groqResult?.explanation ?? explanation)
+  const finalSuggestedAction = String(groqResult?.suggested_action ?? suggestedAction)
+  const finalConfidence = toNumber(groqResult?.confidence) ?? defaultConfidence
 
   return {
     title: finalTitle,
     description: finalDescription,
-    impact,
+    impact: finalRisk,
     metric,
     confidence: finalConfidence,
     suggestedAction: finalSuggestedAction,
@@ -328,12 +348,27 @@ export async function processIncomingEvent(input: {
     payload: {
       title: finalTitle,
       description: finalDescription,
-      impact,
+      impact: finalRisk,
       metric,
-      weather: processedPayload.weather,
       source: input.source,
       locationName: input.locationName ?? null,
-      processedAt: processedPayload.processedAt,
+      processedAt: new Date().toISOString(),
+      weather: {
+        temperature: metrics.temperature,
+        precipitation: metrics.precipitation,
+        humidity: metrics.humidity,
+        windSpeed: metrics.windSpeed,
+      },
+      rawData: sanitizeJson(rawData) as Record<string, unknown>,
+      parsedData: {
+        metrics: {
+          temperature: metrics.temperature,
+          precipitation: metrics.precipitation,
+          humidity: metrics.humidity,
+          windSpeed: metrics.windSpeed,
+        },
+        discoveredNumbers: metrics.discoveredNumbers,
+      },
     },
   }
 }

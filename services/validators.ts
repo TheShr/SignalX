@@ -14,6 +14,8 @@ export const createEventSchema = z.object({
   longitude: parseNumberFromString.optional(),
   locationName: z.string().min(1).optional(),
   payload: z.record(z.unknown()).optional(),
+  userEmail: z.string().email().optional(),
+  userId: z.string().min(1).optional(),
 }).refine(
   (data) => (
     data.latitude !== undefined && data.longitude !== undefined

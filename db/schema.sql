@@ -34,6 +34,8 @@ create table if not exists public.signals (
   precipitation numeric,
   humidity numeric,
   wind_speed numeric,
+  raw_data jsonb,
+  parsed_data jsonb,
   processed_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
@@ -68,3 +70,31 @@ create index if not exists idx_signals_risk_created_at on public.signals(risk, c
 create index if not exists idx_insights_user_created_at on public.insights(user_id, created_at desc);
 create index if not exists idx_alerts_user_created_at on public.alerts(user_id, created_at desc);
 create index if not exists idx_alerts_resolved_created_at on public.alerts(user_id, resolved, created_at desc);
+
+-- Analytics helper functions for dashboard queries
+create or replace function public.analytics_summary(p_user_id uuid)
+returns table(
+  total_signals bigint,
+  high_risk bigint,
+  medium_risk bigint,
+  low_risk bigint,
+  active_alerts bigint
+)
+language sql stable as $$
+  select
+    (select count(*) from public.signals where user_id = p_user_id) as total_signals,
+    (select count(*) from public.signals where user_id = p_user_id and risk = 'HIGH') as high_risk,
+    (select count(*) from public.signals where user_id = p_user_id and risk = 'MEDIUM') as medium_risk,
+    (select count(*) from public.signals where user_id = p_user_id and risk = 'LOW') as low_risk,
+    (select count(*) from public.alerts where user_id = p_user_id and resolved = false) as active_alerts;
+$$;
+
+create or replace function public.signals_trend(p_user_id uuid, p_days int default 7)
+returns table(day text, total int)
+language sql stable as $$
+  select to_char(created_at::date, 'YYYY-MM-DD') as day, count(*)
+  from public.signals
+  where user_id = p_user_id and created_at >= now() - make_interval(days => p_days)
+  group by day
+  order by day;
+$$;

@@ -70,7 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const provider = new GoogleAuthProvider()
       const userCredential = await signInWithPopup(auth, provider)
       setUser(userCredential.user)
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'auth/unauthorized-domain') {
+        throw new Error(
+          `Google sign-in is blocked because this domain is not authorized. Add "${window.location.host}" to your Firebase Authentication authorized domains.`
+        )
+      }
       throw error
     }
   }

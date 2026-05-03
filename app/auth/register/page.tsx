@@ -16,6 +16,13 @@ export default function RegisterPage() {
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
+  const formatAuthError = (err: any, fallback: string) => {
+    if (err?.code === 'auth/unauthorized-domain') {
+      return `Google sign-in is blocked because this domain is not authorized. Add "${window.location.host}" to your Firebase Authentication authorized domains.`
+    }
+    return err?.message || fallback
+  }
+
   // Redirect if already logged in
   if (!loading && user) {
     router.push('/dashboard')
@@ -123,7 +130,7 @@ export default function RegisterPage() {
                 await loginWithGoogle()
                 router.push('/dashboard')
               } catch (err: any) {
-                setError(err.message || 'Google sign-up failed')
+                setError(formatAuthError(err, 'Google sign-up failed'))
               } finally {
                 setIsLoading(false)
               }
@@ -159,7 +166,7 @@ export default function RegisterPage() {
                   await loginWithGoogle()
                   router.push('/dashboard')
                 } catch (err: any) {
-                  setError(err.message || 'Google sign-up failed')
+                  setError(formatAuthError(err, 'Google sign-up failed'))
                 } finally {
                   setIsLoading(false)
                 }

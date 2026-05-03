@@ -7,6 +7,7 @@ import { AIInsightsPanel } from '@/components/dashboard/ai-insights-panel'
 import { AlertsPanel } from '@/components/dashboard/alerts-panel'
 import { ChartsSection } from '@/components/dashboard/charts-section'
 import { GradientBackground } from '@/components/animations/gradient-background'
+import { SignalIngestionPanel } from '@/components/dashboard/signal-ingestion-panel'
 import { useSignalXRealtime } from '@/hooks/use-signalx-realtime'
 
 export default function Dashboard() {
@@ -84,6 +85,10 @@ export default function Dashboard() {
         </motion.div>
 
         {/* Charts Section - Full Width */}
+        <motion.div variants={itemVariants} className="mt-8">
+          <SignalIngestionPanel />
+        </motion.div>
+
         <motion.div variants={itemVariants} className="mt-8">
           <ChartsSection />
         </motion.div>

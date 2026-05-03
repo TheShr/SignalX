@@ -4,21 +4,27 @@ import { createEvent, findOrCreateUser } from '@/services/db'
 import { createEventSchema } from '@/services/validators'
 
 export async function POST(request: Request) {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  try {
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const token = authHeader.replace('Bearer ', '')
+    const decoded = await verifyFirebaseToken(token)
+    const body = await request.json()
+    const result = createEventSchema.safeParse(body)
+
+    if (!result.success) {
+      return NextResponse.json({ error: result.error.flatten() }, { status: 400 })
+    }
+
+    const user = await findOrCreateUser(decoded.uid, decoded.email ?? '')
+    const event = await createEvent(user.id, result.data)
+    return NextResponse.json({ event, status: 'accepted' }, { status: 202 })
+  } catch (error) {
+    console.error('[API /api/events] POST error:', error)
+    const message = error instanceof Error ? error.message : 'Internal Server Error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
-
-  const token = authHeader.replace('Bearer ', '')
-  const decoded = await verifyFirebaseToken(token)
-  const body = await request.json()
-  const result = createEventSchema.safeParse(body)
-
-  if (!result.success) {
-    return NextResponse.json({ error: result.error.flatten() }, { status: 400 })
-  }
-
-  const user = await findOrCreateUser(decoded.uid, decoded.email ?? '')
-  const event = await createEvent(user.id, result.data)
-  return NextResponse.json({ event, status: 'accepted' }, { status: 202 })
 }

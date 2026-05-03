@@ -24,6 +24,11 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
       console.error('[v0] Logout error:', error)
     }
   }
+
+  if (!isOpen || !user) {
+    return null
+  }
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -67,9 +72,9 @@ export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                   </div>
                   <div>
                     <p className="font-semibold text-foreground">
-                      {user?.displayName || user?.email?.split('@')[0] || 'User'}
+                      {user.displayName || user.email?.split('@')[0] || 'User'}
                     </p>
-                    <p className="text-sm text-foreground/60">{user?.email}</p>
+                    <p className="text-sm text-foreground/60">{user.email}</p>
                   </div>
                 </div>
                 <p className="text-xs text-foreground/50">Premium Plan • Active</p>

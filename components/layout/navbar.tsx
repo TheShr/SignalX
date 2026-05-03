@@ -2,12 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { User, Bell } from 'lucide-react'
+import { useAuth } from '@/contexts/auth-context'
 import { ProfileModal } from '../modals/profile-modal'
 import { NotificationsModal } from '../modals/notifications-modal'
 
 export function Navbar() {
+  const { user, loading } = useAuth()
+  const router = useRouter()
   const [isScrolled, setIsScrolled] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
@@ -77,30 +81,40 @@ export function Navbar() {
 
         {/* Right - User Menu */}
         <div className="flex items-center gap-4">
-          <motion.button
-            onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-            className="relative p-2 rounded-lg hover:bg-white/5 transition-colors"
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Bell size={20} className="text-foreground/60" />
-            <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-          </motion.button>
+          {loading ? (
+            <div className="h-10 w-24 rounded-full bg-white/5 animate-pulse" />
+          ) : user ? (
+            <>
+              <motion.button
+                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                className="relative p-2 rounded-lg hover:bg-white/5 transition-colors"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Bell size={20} className="text-foreground/60" />
+                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+              </motion.button>
 
-          <motion.button
-            onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="p-2 rounded-lg hover:bg-white/5 transition-colors"
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <User size={20} className="text-foreground/60" />
-          </motion.button>
+              <motion.button
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="p-2 rounded-lg hover:bg-white/5 transition-colors"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <User size={20} className="text-foreground/60" />
+              </motion.button>
+            </>
+          ) : (
+            <Link href="/auth/login" className="rounded-full border border-white/10 px-4 py-2 text-sm text-foreground/80 hover:bg-white/5 transition-colors">
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
 
       {/* Modals */}
-      <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
-      <NotificationsModal isOpen={isNotificationsOpen} onClose={() => setIsNotificationsOpen(false)} />
+      {user && <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />}
+      {user && <NotificationsModal isOpen={isNotificationsOpen} onClose={() => setIsNotificationsOpen(false)} />}
     </motion.header>
   )
 }

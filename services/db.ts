@@ -183,6 +183,21 @@ export async function fetchPaginatedAlerts(userId: string, page = 1, pageSize = 
   return (data ?? []) as AlertRecord[]
 }
 
+export async function fetchRecentNotifications(userId: string, limit = 8) {
+  const { data, error } = await supabaseServer
+    .from('alerts')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    throw error
+  }
+
+  return (data ?? []) as AlertRecord[]
+}
+
 export async function fetchFeedItems(userId: string, page = 1, pageSize = DEFAULT_PAGE_SIZE) {
   const offset = (page - 1) * pageSize
   const { data, error } = await supabaseServer

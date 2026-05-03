@@ -25,7 +25,7 @@ export function useSignalXRealtime() {
   const [alerts, setAlerts] = useState<AlertModel[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { getIdToken } = useAuth()
+  const { getIdToken, loading: authLoading } = useAuth()
 
   const resolveAlert = async (alertId: string) => {
     try {
@@ -86,6 +86,11 @@ export function useSignalXRealtime() {
   }
 
   useEffect(() => {
+    if (authLoading) {
+      setLoading(true)
+      return
+    }
+
     let active = true
     let realtimeChannel: any = null
 
@@ -139,6 +144,7 @@ export function useSignalXRealtime() {
             'postgres_changes',
             { event: 'INSERT', schema: 'public', table: 'events', filter: `user_id=eq.${userId}` },
             (payload) => {
+              console.debug('[SignalXRealtime] new event payload:', payload)
               updateBuffer.feed.push(toFeedItem(payload.new))
               if (!updateBuffer.timer) {
                 updateBuffer.timer = window.setTimeout(flushBuffer, DEBOUNCE_MS)
@@ -196,7 +202,28 @@ export function useSignalXRealtime() {
         void supabaseBrowser.removeChannel(realtimeChannel)
       }
     }
-  }, [getIdToken, updateBuffer])
+  }, [getIdToken, authLoading, updateBuffer])
+
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const newEvent = customEvent.detail
+      if (!newEvent || typeof newEvent !== 'object') {
+        return
+      }
+
+      const feedItem = toFeedItem(newEvent)
+      setFeedItems((prev) => {
+        if (prev.some((item) => item.id === feedItem.id)) {
+          return prev
+        }
+        return [feedItem, ...prev].slice(0, MAX_BUFFER)
+      })
+    }
+
+    window.addEventListener('signalx:new-event', listener)
+    return () => window.removeEventListener('signalx:new-event', listener)
+  }, [])
 
   return {
     feedItems,

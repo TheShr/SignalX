@@ -56,9 +56,18 @@ export function SignalIngestionPanel() {
         body: JSON.stringify({ source, payload }),
       })
 
+      const result = await response.json()
       if (!response.ok) {
-        const result = await response.json().catch(() => null)
         throw new Error(result?.error || 'Failed to submit signal event')
+      }
+
+      const sentEvent = result.event
+      if (sentEvent && typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('signalx:new-event', {
+            detail: sentEvent,
+          })
+        )
       }
 
       setStatus('Signal submitted successfully. Processing will begin shortly.')
